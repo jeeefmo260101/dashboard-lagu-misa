@@ -183,7 +183,7 @@
     <div id="master-song-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden modal-backdrop p-4"><div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6 modal-content transform scale-95 opacity-0"><h3 class="text-xl font-bold mb-2">Lagu Ditemukan di Master</h3><p id="master-song-info" class="text-gray-600 mb-4"></p><p class="text-xs text-gray-500 mb-4">Catatan: Harap tambahkan lagu ini ke "Bank Lagu" Anda nanti agar tersedia untuk jadwal berikutnya.</p><div class="flex justify-end mt-6 space-x-2"><button type="button" onclick="closeModal('master-song-modal')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Batal</button><button type="button" id="use-master-song-btn" onclick="useMasterSong()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">Tarik Data</button></div></div></div>
 
     <script>
-        const API_URL = "https://script.google.com/macros/s/AKfycbyHajkKuK8ufvA8LxxslVL3sRAIJ8S_2vaCT0D4v4OufhUGyLgadFhTubu03ErDPGgV/exec";
+        const API_URL = "https://script.google.com/macros/s/AKfycbwstIV1cz1ZFZCkdHabuRxOAVA3svBwEjJF8cM7vwZO7GPKquL12iDPGuc4nu3ghaU-/exec";
         
         let allSongsCache = [];
         let activeSongSearchInput = null;
