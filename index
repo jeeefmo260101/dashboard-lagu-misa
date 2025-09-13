@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dasbor Lagu Misa - St. Maria Pintu Surga</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .modal-backdrop { background-color: rgba(0,0,0,0.6); transition: opacity 0.3s ease; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+        .modal-content { transition: transform 0.3s ease, opacity 0.3s ease; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .modal-content::-webkit-scrollbar { width: 6px; }
+        .modal-content::-webkit-scrollbar-track { background: #f1f1f1; }
+        .modal-content::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
+        .modal-content::-webkit-scrollbar-thumb:hover { background: #555; }
+        .song-search-results {
+            max-height: 160px;
+            overflow-y: auto;
+        }
+        .song-search-item:hover {
+            background-color: #eff6ff; /* blue-50 */
+        }
+        #toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .toast {
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            color: #fff;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .toast.success { background-color: #10b981; }
+        .toast.error { background-color: #ef4444; }
+        .toast.info { background-color: #3b82f6; }
+        .sortable-header { cursor: pointer; user-select: none; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+    
+    <!-- Login Modal -->
+    <div id="login-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 modal-content transform scale-100 opacity-100">
+            <h3 class="text-2xl font-bold text-center mb-4">Login Admin</h3>
+            <form id="login-form">
+                <div class="mb-4">
+                    <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
+                    <input type="text" id="username" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required>
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required>
+                </div>
+                <button type="submit" id="login-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md">Login</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Main Dashboard Container -->
+    <div id="main-dashboard" class="container mx-auto p-4 md:p-6 lg:p-8 hidden">
+        <header class="mb-8 text-center md:text-left">
+            <h1 class="text-3xl font-bold text-gray-900">Dasbor Lagu Liturgi</h1>
+            <p class="text-md text-gray-600">Gereja Stasi Paroki St. Maria Pintu Surga, Sei Agul Medan</p>
+        </header>
+
+        <!-- Bagian Bank Lagu -->
+        <div class="bg-white p-4 md:p-6 rounded-xl shadow-lg mb-8">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-4">
+                <h2 class="text-2xl font-semibold text-center sm:text-left">Bank Lagu</h2>
+                <div class="grid grid-cols-2 sm:flex sm:items-center gap-2">
+                    <button id="sync-all-btn" onclick="syncAll()" class="w-full sm:w-auto bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center text-sm"><i class="fas fa-sync-alt mr-2"></i><span>Sinkronkan Semua</span></button>
+                    <button onclick="openCsvModal('song-csv-modal')" class="w-full sm:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center text-sm"><i class="fas fa-file-csv mr-2"></i><span>Import/Export</span></button>
+                    <button onclick="openSongModal()" class="col-span-2 w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center text-sm"><i class="fas fa-plus mr-2"></i><span>Tambah Lagu</span></button>
+                </div>
+            </div>
+
+            <!-- Kontrol Pencarian & Paginasi -->
+            <div class="mb-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+                <input type="text" id="song-search-input" onkeyup="filterAndRenderSongs()" class="w-full sm:w-1/2 border-gray-300 rounded-lg shadow-sm" placeholder="Cari lagu...">
+                <div class="flex items-center gap-2 mt-2 sm:mt-0">
+                    <label for="page-size-select" class="text-sm text-gray-600 whitespace-nowrap">Tampil:</label>
+                    <select id="page-size-select" onchange="changePageSize(this.value)" class="rounded-lg text-sm border-gray-300">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="all">Semua</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="hidden sm:block overflow-x-auto">
+                <table class="w-full table-auto border-collapse">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="border px-4 py-2 sortable-header" onclick="sortTable('nomor_lagu')">No. Lagu <i class="fas fa-sort text-xs ml-1"></i></th>
+                            <th class="border px-4 py-2 sortable-header" onclick="sortTable('nama_lagu')">Nama Lagu <i class="fas fa-sort text-xs ml-1"></i></th>
+                            <th class="border px-4 py-2 sortable-header" onclick="sortTable('jenis_lagu')">Jenis Lagu <i class="fas fa-sort text-xs ml-1"></i></th>
+                            <th class="border px-4 py-2">Detail Ordinarium</th>
+                            <th class="border px-4 py-2">File PDF</th>
+                            <th class="border px-4 py-2">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="song-table-body-desktop"></tbody>
+                </table>
+            </div>
+            <div id="song-card-container-mobile" class="sm:hidden grid grid-cols-1 gap-4"></div>
+            <div id="song-loader" class="text-center py-4"><div class="loader"></div>Memuat data...</div>
+
+            <!-- Kontrol Paginasi Bawah -->
+            <div id="pagination-controls" class="flex justify-between items-center mt-4">
+                <button onclick="changePage(-1)" id="prev-page-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg"><i class="fas fa-chevron-left mr-1"></i> Sebelumnya</button>
+                <span id="page-info" class="text-sm text-gray-600"></span>
+                <button onclick="changePage(1)" id="next-page-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg">Berikutnya <i class="fas fa-chevron-right ml-1"></i></button>
+            </div>
+        </div>
+
+        <!-- Bagian Jadwal Misa -->
+        <div class="bg-white p-4 md:p-6 rounded-xl shadow-lg">
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-4">
+                <h2 class="text-2xl font-semibold text-center sm:text-left">Jadwal Lagu Misa</h2>
+                <div class="grid grid-cols-2 sm:flex sm:items-center gap-2">
+                    <button onclick="openCsvModal('schedule-csv-modal')" class="w-full sm:w-auto bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center text-sm"><i class="fas fa-file-csv mr-2"></i><span>Import/Export</span></button>
+                    <button onclick="openScheduleModal()" class="w-full sm:w-auto bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center text-sm"><i class="fas fa-calendar-plus mr-2"></i><span>Buat Jadwal</span></button>
+                </div>
+            </div>
+            
+            <!-- Tampilan Tabel Lengkap untuk Desktop -->
+            <div class="hidden sm:block overflow-x-auto">
+                <table class="w-full table-auto border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="border px-3 py-2">Tanggal Misa</th>
+                            <th class="border px-3 py-2">Prelude</th>
+                            <th class="border px-3 py-2">Pembukaan</th>
+                            <th class="border px-3 py-2">Kyrie</th>
+                            <th class="border px-3 py-2">Gloria</th>
+                            <th class="border px-3 py-2">Persembahan</th>
+                            <th class="border px-3 py-2">Peng. Persembahan</th>
+                            <th class="border px-3 py-2">Kudus</th>
+                            <th class="border px-3 py-2">Anak Domba</th>
+                            <th class="border px-3 py-2">Komuni</th>
+                            <th class="border px-3 py-2">Setelah Komuni</th>
+                            <th class="border px-3 py-2">Penutup</th>
+                            <th class="border px-3 py-2">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="schedule-table-body-desktop"></tbody>
+                </table>
+            </div>
+
+            <!-- Tampilan Kartu Lengkap untuk Mobile -->
+            <div id="schedule-card-container-mobile" class="sm:hidden grid grid-cols-1 gap-4"></div>
+            <div id="schedule-loader" class="text-center py-4"><div class="loader"></div>Memuat data...</div>
+        </div>
+    </div>
+
+    <!-- Modal-modal lainnya -->
+    <div id="schedule-detail-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden modal-backdrop p-4"><div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 modal-content transform scale-95 opacity-0 overflow-y-auto max-h-[90vh]"><div class="flex justify-between items-center mb-4 border-b pb-3"><h3 id="schedule-detail-title" class="text-xl font-bold">Detail Jadwal Misa</h3><button onclick="closeModal('schedule-detail-modal')" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button></div><div id="schedule-detail-content" class="space-y-2 text-sm"><div class="loader"></div></div><div class="flex justify-end mt-6"><button type="button" onclick="closeModal('schedule-detail-modal')" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Tutup</button></div></div></div>
+    <div id="song-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden modal-backdrop p-4"><div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6 modal-content transform scale-95 opacity-0 overflow-y-auto max-h-[90vh]"><h3 id="song-modal-title" class="text-xl font-bold mb-4">Tambah Lagu Baru</h3><form id="song-form"><input type="hidden" id="song-id"><input type="hidden" id="song-pdf-url"><div class="mb-4"><label for="song-number" class="block text-sm font-medium text-gray-700">Nomor Lagu</label><input type="text" id="song-number" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required onkeyup="autoUpdateSongType(this.value)"></div><div class="mb-4"><label for="song-name" class="block text-sm font-medium text-gray-700">Nama Lagu</label><input type="text" id="song-name" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div><div class="mb-4"><label for="song-type" class="block text-sm font-medium text-gray-700">Jenis Lagu</label><select id="song-type" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required><option value="">-- Pilih --</option><option value="Pembuka">Pembuka</option><option value="Kyrie">Tuhan Kasihanilah (Kyrie)</option><option value="Gloria">Kemuliaan (Gloria)</option><option value="Persembahan">Persembahan</option><option value="Kudus">Kudus (Sanctus)</option><option value="Anak Domba Allah">Anak Domba Allah</option><option value="Komuni">Komuni</option><option value="Penutup">Penutup</option><option value="Paskah">Paskah</option><option value="Natal">Natal</option><option value="Maria">Maria</option><option value="Pujian Sabda">Pujian Sabda</option><option value="Lainnya">Lainnya</option></select></div><div class="mb-4"><label for="song-file" class="block text-sm font-medium text-gray-700">Upload Partitur (PDF)</label><input type="file" id="song-file" accept=".pdf" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/><div id="file-upload-status" class="text-sm text-gray-500 mt-1"></div></div><div class="flex justify-end mt-6 space-x-2"><button type="button" onclick="closeModal('song-modal')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Batal</button><button type="submit" id="song-form-submit-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">Simpan</button></div></form></div></div>
+    <div id="schedule-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden modal-backdrop p-4"><div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 modal-content transform scale-95 opacity-0 overflow-y-auto max-h-[90vh]"><h3 id="schedule-modal-title" class="text-xl font-bold mb-4">Jadwal Lagu Misa</h3><form id="schedule-form"><input type="hidden" id="schedule-id"><div class="mb-4"><label for="schedule-date" class="block text-sm font-medium text-gray-700">Tanggal Misa</label><input type="date" id="schedule-date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div><div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4"><div><h4 class="font-semibold text-lg mb-2">Ritus Pembuka</h4><div class="mb-2 space-y-1 relative"><label class="block text-sm">Prelude</label><input type="text" id="song-prelude" autocomplete="off" class="w-full mt-1 rounded-md border-gray-300" placeholder="Ketik judul lagu manual..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Pembukaan</label><input type="text" id="song-pembukaan" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari nomor/judul..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Tuhan Kasihanilah</label><input type="text" data-song-type="Kyrie" id="song-kyrie" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari ordinarium/judul..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Kemuliaan</label><input type="text" data-song-type="Gloria" id="song-gloria" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari ordinarium/judul..."></div></div><div><h4 class="font-semibold text-lg mb-2">Liturgi Ekaristi & Penutup</h4><div class="mb-2 space-y-1 relative"><label class="block text-sm">Persembahan</label><input type="text" id="song-persembahan" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari nomor/judul..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Pengantar Persembahan</label><input type="text" id="song-pengantar-persembahan" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari nomor/judul..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Kudus</label><input type="text" data-song-type="Kudus" id="song-sanctus" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari ordinarium/judul..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Anak Domba Allah</label><input type="text" data-song-type="Anak Domba Allah" id="song-agnus-dei" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari ordinarium/judul..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Komuni</label><input type="text" id="song-komuni" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari nomor/judul..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Setelah Komuni</label><input type="text" id="song-setelah-komuni" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari nomor/judul..."></div><div class="mb-2 space-y-1 relative"><label class="block text-sm">Penutup</label><input type="text" id="song-penutup" onkeyup="showSongSearch(this)" onfocus="showSongSearch(this)" autocomplete="off" class="song-search-input w-full mt-1 rounded-md border-gray-300" placeholder="Cari nomor/judul..."></div></div></div><div id="song-search-results" class="absolute z-50 w-full bg-white border rounded-md shadow-lg hidden song-search-results"></div><div class="mt-4"><h4 class="font-semibold text-lg mb-2">Lagu Tambahan (Opsional)</h4><textarea id="song-tambahan" rows="3" placeholder="Untuk masa khusus..." class="w-full mt-1 rounded-md border-gray-300"></textarea></div><div class="flex justify-end mt-6 space-x-2"><button type="button" onclick="closeModal('schedule-modal')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Batal</button><button type="submit" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded">Simpan Jadwal</button></div></form></div></div>
+    <div id="song-csv-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden modal-backdrop p-4"><div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6 modal-content transform scale-95 opacity-0"><h3 class="text-xl font-bold mb-4">Import / Export Bank Lagu</h3><div class="mb-4"><h4 class="font-semibold">Export Data</h4><p class="text-sm text-gray-600 mb-2">Download semua data dari Bank Lagu.</p><button onclick="exportAllDataAsCsv('songs')" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">Export Lagu</button></div><hr class="my-4"><div class="mb-4"><h4 class="font-semibold">Import Data</h4><p class="text-sm text-gray-600 mb-2">Upload file CSV untuk menambah data.</p><input type="file" id="song-csv-file-input" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/><button onclick="uploadCsv('songs')" id="upload-song-csv-btn" class="w-full mt-3 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">Upload File</button></div><div class="flex justify-end mt-6"><button type="button" onclick="closeModal('song-csv-modal')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Tutup</button></div></div></div>
+    <div id="schedule-csv-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden modal-backdrop p-4"><div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6 modal-content transform scale-95 opacity-0"><h3 class="text-xl font-bold mb-4">Import / Export Jadwal Misa</h3><div class="mb-4"><h4 class="font-semibold">Export Template</h4><p class="text-sm text-gray-600 mb-2">Download template CSV kosong.</p><button onclick="exportAllDataAsCsv('schedules')" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">Download Template</button></div><hr class="my-4"><div class="mb-4"><h4 class="font-semibold">Import Data Jadwal</h4><p class="text-sm text-gray-600 mb-2">Upload file CSV berisi data jadwal.</p><input type="file" id="schedule-csv-file-input" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/><button onclick="uploadCsv('schedules')" id="upload-schedule-csv-btn" class="w-full mt-3 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">Upload File</button></div><div class="flex justify-end mt-6"><button type="button" onclick="closeModal('schedule-csv-modal')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Tutup</button></div></div></div>
+    <div id="master-song-modal" class="fixed inset-0 z-50 flex items-center justify-center hidden modal-backdrop p-4"><div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6 modal-content transform scale-95 opacity-0"><h3 class="text-xl font-bold mb-2">Lagu Ditemukan di Master</h3><p id="master-song-info" class="text-gray-600 mb-4"></p><p class="text-xs text-gray-500 mb-4">Catatan: Harap tambahkan lagu ini ke "Bank Lagu" Anda nanti agar tersedia untuk jadwal berikutnya.</p><div class="flex justify-end mt-6 space-x-2"><button type="button" onclick="closeModal('master-song-modal')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">Batal</button><button type="button" id="use-master-song-btn" onclick="useMasterSong()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">Tarik Data</button></div></div></div>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbyHajkKuK8ufvA8LxxslVL3sRAIJ8S_2vaCT0D4v4OufhUGyLgadFhTubu03ErDPGgV/exec";
+        
+        let allSongsCache = [];
+        let activeSongSearchInput = null;
+        let masterSongToUse = null;
+
+        const bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+        // Pagination & Sorting State
+        let currentPage = 1;
+        let pageSize = 10;
+        let sortColumn = 'nomor_lagu';
+        let sortDirection = 'asc';
+        let filterTerm = '';
+
+        function showToast(message, type = 'info') {
+            const toastContainer = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 100);
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        async function callApi(functionName, params = []) {
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ functionName, params }),
+                });
+
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    return result.data;
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error('API Call Error:', error);
+                throw new Error('Gagal berkomunikasi dengan server. Periksa koneksi dan URL API Anda.');
+            }
+        }
+
+        // Login Logic
+        document.addEventListener('DOMContentLoaded', () => { 
+            const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+            if (isLoggedIn) {
+                showDashboard();
+            } else {
+                showLogin();
+            }
+        });
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('login-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            try {
+                const result = await callApi('checkAdminLogin', [username, password]);
+                if (result.status === 'success') {
+                    localStorage.setItem('isLoggedIn', 'true');
+                    showToast('Login berhasil!', 'success');
+                    showDashboard();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (error) {
+                showToast('Terjadi kesalahan saat login.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Login';
+            }
+        });
+
+        function showLogin() {
+            document.getElementById('login-modal').classList.remove('hidden');
+            document.getElementById('main-dashboard').classList.add('hidden');
+        }
+
+        function showDashboard() {
+            document.getElementById('login-modal').classList.add('hidden');
+            document.getElementById('main-dashboard').classList.remove('hidden');
+            loadAllSongs();
+            loadSchedules();
+        }
+
+        document.addEventListener('click', (e) => { const searchResults = document.getElementById('song-search-results'); if (!searchResults.contains(e.target) && e.target !== activeSongSearchInput) { searchResults.classList.add('hidden'); } });
+        
+        function showLoader(id, show) { document.getElementById(id).style.display = show ? 'block' : 'none'; }
+        
+        function populateScheduleSongOptions(songs) { allSongsCache = songs.sort((a, b) => a.nama_lagu.localeCompare(b.nama_lagu)); }
+        
+        async function showSongSearch(inputEl) { 
+            if (inputEl.id === 'song-prelude') return; 
+            activeSongSearchInput = inputEl; 
+            const searchTerm = inputEl.value.toLowerCase(); 
+            const resultsContainer = document.getElementById('song-search-results'); 
+            
+            if (searchTerm.length < 2) { 
+                resultsContainer.classList.add('hidden'); 
+                return; 
+            } 
+
+            let filteredSongs = []; 
+            const isOrdinariumField = inputEl.dataset.songType; 
+
+            if (isOrdinariumField) { 
+                filteredSongs = allSongsCache.filter(song => 
+                    song.jenis_lagu === isOrdinariumField && 
+                    (song.jenis_ordinarium.toLowerCase().includes(searchTerm) || song.nama_lagu.toLowerCase().includes(searchTerm))
+                ); 
+            } else { 
+                filteredSongs = allSongsCache.filter(song => 
+                    song.nama_lagu.toLowerCase().includes(searchTerm) || 
+                    song.nomor_lagu.toString().includes(searchTerm)
+                ); 
+            } 
+            
+            if (filteredSongs.length === 0 && /^\d+$/.test(inputEl.value)) { 
+                try { 
+                    const masterSong = await callApi('getSongFromMasterByNumber', [inputEl.value]); 
+                    if(masterSong) { 
+                        masterSongToUse = { ...masterSong, nomor_lagu: inputEl.value }; 
+                        document.getElementById('master-song-info').innerHTML = `Lagu PS-${inputEl.value} tidak ada di Bank Lagu, tapi ditemukan di Master Database sebagai: <br><strong class="text-lg">"${masterSong.nama_lagu}"</strong>`; 
+                        openModal('master-song-modal'); 
+                    } else { 
+                        resultsContainer.innerHTML = '<div class="p-2 text-gray-500">Nomor tidak ditemukan di master.</div>'; 
+                    } 
+                } catch(err) { 
+                    showToast(`Gagal mencari di master: ${err.message}`, 'error'); 
+                    resultsContainer.innerHTML = '<div class="p-2 text-red-500">Error.</div>';
+                } 
+            } else if (filteredSongs.length === 0) { 
+                resultsContainer.innerHTML = '<div class="p-2 text-gray-500">Lagu tidak ditemukan.</div>'; 
+            } else { 
+                resultsContainer.innerHTML = filteredSongs.map(song => `<div class="p-2 cursor-pointer song-search-item" onclick="selectSong(this, '${song.nama_lagu}', '${song.nomor_lagu}')"><p class="font-semibold">${song.nama_lagu} <span class="text-xs text-gray-500">(${song.nomor_lagu})</span></p><p class="text-xs text-blue-600">${song.jenis_ordinarium || song.jenis_lagu}</p></div>`).join(''); 
+            } 
+            const inputRect = inputEl.getBoundingClientRect(); 
+            const modalRect = inputEl.closest('.modal-content').getBoundingClientRect(); 
+            resultsContainer.style.top = `${inputRect.bottom - modalRect.top}px`; 
+            resultsContainer.style.left = `${inputRect.left - modalRect.left}px`; 
+            resultsContainer.style.width = `${inputRect.width}px`; 
+            resultsContainer.classList.remove('hidden'); 
+        }
+        
+        function useMasterSong() { if (masterSongToUse && activeSongSearchInput) { const songValue = `${masterSongToUse.nama_lagu} (${masterSongToUse.nomor_lagu})`; activeSongSearchInput.value = songValue; } closeModal('master-song-modal'); }
+        function selectSong(el, namaLagu, nomorLagu) { const songValue = `${namaLagu} (${nomorLagu})`; activeSongSearchInput.value = songValue; document.getElementById('song-search-results').classList.add('hidden'); }
+        
+        async function handleScheduleFormSubmit(e) { e.preventDefault(); const btn = e.target.querySelector('button[type="submit"]'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; try { const data = { id: document.getElementById('schedule-id').value, date: document.getElementById('schedule-date').value, prelude: document.getElementById('song-prelude').value, pembukaan: document.getElementById('song-pembukaan').value, kyrie: document.getElementById('song-kyrie').value, gloria: document.getElementById('song-gloria').value, persembahan: document.getElementById('song-persembahan').value, pengantar_persembahan: document.getElementById('song-pengantar-persembahan').value, sanctus: document.getElementById('song-sanctus').value, agnus_dei: document.getElementById('song-agnus-dei').value, komuni: document.getElementById('song-komuni').value, setelah_komuni: document.getElementById('song-setelah-komuni').value, penutup: document.getElementById('song-penutup').value, tambahan: document.getElementById('song-tambahan').value }; const func = data.id ? 'updateSchedule' : 'addSchedule'; await callApi(func, [data]); showToast('Jadwal berhasil disimpan!', 'success'); closeModal('schedule-modal'); loadSchedules(); } catch(err) { showToast(`Gagal menyimpan jadwal: ${err.message}`, 'error'); } finally { btn.disabled = false; btn.innerText = 'Simpan Jadwal'; }}
+        async function openScheduleModal(schedule = null, readOnly = false) { const form = document.getElementById('schedule-form'); form.reset(); document.getElementById('schedule-modal-title').innerText = schedule ? (readOnly ? 'Detail Jadwal' : 'Edit Jadwal') : 'Buat Jadwal'; document.getElementById('schedule-id').value = schedule ? schedule.id : ''; if (schedule) { document.getElementById('schedule-date').value = schedule.date; const songFields = ['prelude', 'pembukaan', 'kyrie', 'gloria', 'persembahan', 'pengantar_persembahan', 'sanctus', 'agnus_dei', 'komuni', 'setelah_komuni', 'penutup']; songFields.forEach(field => { document.getElementById(`song-${field.replace(/_/g, '-')}`).value = schedule[field] || ''; }); document.getElementById('song-tambahan').value = schedule.tambahan || ''; } form.querySelectorAll('input, textarea').forEach(i => i.disabled = readOnly); form.querySelector('button[type="submit"]').style.display = readOnly ? 'none' : 'inline-block'; openModal('schedule-modal'); }
+        
+        async function loadAllSongs() {
+            showLoader('song-loader', true);
+            try {
+                const songs = await callApi('getSongs');
+                allSongsCache = songs;
+                filterAndRenderSongs();
+            } catch (err) {
+                showToast(`Gagal memuat lagu: ${err.message}`, 'error');
+            } finally {
+                showLoader('song-loader', false);
+            }
+        }
+        
+        function filterAndRenderSongs() {
+            filterTerm = document.getElementById('song-search-input').value.toLowerCase();
+            const filteredSongs = allSongsCache.filter(song => 
+                song.nomor_lagu.toString().toLowerCase().includes(filterTerm) ||
+                song.nama_lagu.toLowerCase().includes(filterTerm) ||
+                song.jenis_lagu.toLowerCase().includes(filterTerm) ||
+                song.jenis_ordinarium.toLowerCase().includes(filterTerm)
+            );
+            
+            // Apply sorting
+            const sortedSongs = filteredSongs.sort((a, b) => {
+                let valA = a[sortColumn];
+                let valB = b[sortColumn];
+
+                if (sortColumn === 'nomor_lagu') {
+                    valA = parseInt(valA) || 0;
+                    valB = parseInt(valB) || 0;
+                }
+                
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            renderSongs(sortedSongs);
+        }
+
+        function renderSongs(songsToRender) {
+            const tbodyDesktop = document.getElementById('song-table-body-desktop');
+            const cardContainerMobile = document.getElementById('song-card-container-mobile');
+            tbodyDesktop.innerHTML = '';
+            cardContainerMobile.innerHTML = '';
+
+            const totalSongs = songsToRender.length;
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = pageSize === 'all' ? totalSongs : startIndex + parseInt(pageSize);
+            const songsToDisplay = songsToRender.slice(startIndex, endIndex);
+
+            if (totalSongs === 0) {
+                const noData = `<tr><td colspan="6" class="text-center py-4">Belum ada lagu.</td></tr>`;
+                tbodyDesktop.innerHTML = noData;
+                cardContainerMobile.innerHTML = `<div class="text-center py-4">Belum ada lagu.</div>`;
+            } else {
+                songsToDisplay.forEach(song => {
+                    tbodyDesktop.innerHTML += generateSongRowDesktop(song);
+                    cardContainerMobile.innerHTML += generateSongCardMobile(song);
+                });
+            }
+            updatePaginationControls(totalSongs);
+        }
+
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            filterAndRenderSongs();
+        }
+
+        function changePageSize(size) {
+            pageSize = size;
+            currentPage = 1;
+            filterAndRenderSongs();
+        }
+
+        function changePage(direction) {
+            const totalSongs = allSongsCache.length;
+            const maxPage = pageSize === 'all' ? 1 : Math.ceil(totalSongs / parseInt(pageSize));
+            currentPage = Math.max(1, Math.min(maxPage, currentPage + direction));
+            filterAndRenderSongs();
+        }
+
+        function updatePaginationControls(totalSongs) {
+            const maxPage = pageSize === 'all' ? 1 : Math.ceil(totalSongs / parseInt(pageSize));
+            document.getElementById('prev-page-btn').disabled = currentPage === 1;
+            document.getElementById('next-page-btn').disabled = currentPage >= maxPage;
+
+            const startItem = totalSongs > 0 ? (currentPage - 1) * parseInt(pageSize) + 1 : 0;
+            const endItem = pageSize === 'all' ? totalSongs : Math.min(startItem + parseInt(pageSize) - 1, totalSongs);
+            if (pageSize === 'all') {
+                document.getElementById('page-info').innerText = `Total: ${totalSongs} lagu`;
+                document.getElementById('pagination-controls').classList.add('hidden');
+            } else {
+                document.getElementById('page-info').innerText = `Halaman ${currentPage} dari ${maxPage} (${totalSongs} total)`;
+                document.getElementById('pagination-controls').classList.remove('hidden');
+            }
+        }
+
+        function generateSongRowDesktop(song) { const pdfLink = song.pdf_url ? `<a href="${song.pdf_url}" target="_blank" class="text-blue-500 hover:text-blue-700"><i class="fas fa-file-pdf"></i> Lihat</a>` : 'Tidak ada'; const ord = song.jenis_ordinarium || '-'; return `<tr id="song-row-${song.id_unik}"><td class="border px-4 py-2">${song.nomor_lagu}</td><td class="border px-4 py-2">${song.nama_lagu}</td><td class="border px-4 py-2">${song.jenis_lagu}</td><td class="border px-4 py-2">${ord}</td><td class="border px-4 py-2">${pdfLink}</td><td class="border px-4 py-2"><div class="flex items-center space-x-2"><button onclick="syncSong('${song.id_unik}', this)" class="text-teal-500 hover:text-teal-700" title="Sinkronkan"><i class="fas fa-sync-alt"></i></button><button onclick="editSong('${song.id_unik}')" class="text-yellow-500 hover:text-yellow-700" title="Edit"><i class="fas fa-edit"></i></button><button onclick="deleteSong('${song.id_unik}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button></div></td></tr>`; }
+        function generateSongCardMobile(song) { const pdfLink = song.pdf_url ? `<a href="${song.pdf_url}" target="_blank" class="text-blue-500 font-semibold">Lihat Partitur</a>` : '<span class="text-gray-400">Partitur tidak ada</span>'; return `<div id="song-card-${song.id_unik}" class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm"><div class="flex justify-between items-start"><div class="pr-2"><p class="font-bold text-lg text-gray-800">${song.nama_lagu}</p><p class="text-sm text-gray-500">PS-${song.nomor_lagu} &bull; ${song.jenis_lagu}</p></div><div class="flex flex-col space-y-2 flex-shrink-0"><button onclick="editSong('${song.id_unik}')" class="text-yellow-500"><i class="fas fa-edit"></i></button><button onclick="deleteSong('${song.id_unik}')" class="text-red-500"><i class="fas fa-trash"></i></button></div></div><div class="mt-3 pt-3 border-t flex justify-between items-center">${pdfLink}<button onclick="syncSong('${song.id_unik}', this)" class="text-teal-500 flex items-center text-sm"><i class="fas fa-sync-alt mr-1"></i> Sinkronkan</button></div></div>`; }
+        
+        function formatTanggal(dateString) {
+            const d = new Date(dateString + 'T00:00:00');
+            const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][d.getDay()];
+            const tanggal = d.getDate();
+            const bulanStr = bulan[d.getMonth()];
+            const tahun = d.getFullYear();
+            return `${hari}, ${tanggal} ${bulanStr} ${tahun}`;
+        }
+
+        async function loadSchedules() { 
+            showLoader('schedule-loader', true); 
+            try { 
+                const schedules = await callApi('getSchedules'); 
+                const tbodyDesktop = document.getElementById('schedule-table-body-desktop'); 
+                const cardContainerMobile = document.getElementById('schedule-card-container-mobile'); 
+                tbodyDesktop.innerHTML = ''; 
+                cardContainerMobile.innerHTML = ''; 
+                
+                if (!schedules || schedules.length === 0) { 
+                    const noDataHtml = '<tr><td colspan="13" class="text-center py-4">Belum ada jadwal.</td></tr>'; 
+                    tbodyDesktop.innerHTML = noDataHtml; 
+                    cardContainerMobile.innerHTML = `<div class="text-center py-4 col-span-1">Belum ada jadwal.</div>`; 
+                } else { 
+                    schedules.forEach(s => { 
+                        const formattedDate = formatTanggal(s.date);
+                        tbodyDesktop.innerHTML += `<tr><td class="border px-3 py-2 whitespace-nowrap">${formattedDate}</td><td class="border px-3 py-2">${s.prelude || '-'}</td><td class="border px-3 py-2">${s.pembukaan || '-'}</td><td class="border px-3 py-2">${s.kyrie || '-'}</td><td class="border px-3 py-2">${s.gloria || '-'}</td><td class="border px-3 py-2">${s.persembahan || '-'}</td><td class="border px-3 py-2">${s.pengantar_persembahan || '-'}</td><td class="border px-3 py-2">${s.sanctus || '-'}</td><td class="border px-3 py-2">${s.agnus_dei || '-'}</td><td class="border px-3 py-2">${s.komuni || '-'}</td><td class="border px-3 py-2">${s.setelah_komuni || '-'}</td><td class="border px-3 py-2">${s.penutup || '-'}</td><td class="border px-3 py-2"><div class="flex items-center space-x-2"><button onclick="openScheduleDetailModal('${s.id}')" class="text-blue-500" title="Lihat Detail"><i class="fas fa-eye"></i></button><button onclick="editSchedule('${s.id}')" class="text-yellow-500" title="Edit"><i class="fas fa-edit"></i></button><button onclick="deleteSchedule('${s.id}')" class="text-red-500" title="Hapus"><i class="fas fa-trash"></i></button><button onclick="shareToWhatsapp('${s.id}')" class="text-green-500" title="Bagikan ke WhatsApp"><i class="fab fa-whatsapp"></i></button></div></td></tr>`; 
+                        cardContainerMobile.innerHTML += `<div class="bg-white border rounded-lg p-4 shadow-sm"><div class="flex justify-between items-start mb-3"><div class="pr-2"><p class="font-bold text-lg">${formattedDate}</p><p class="text-sm text-gray-500">${s.tambahan||'Misa Hari Minggu Biasa'}</p></div><div class="flex items-center space-x-3 flex-shrink-0"><button onclick="editSchedule('${s.id}')" class="text-yellow-500 text-lg"><i class="fas fa-edit"></i></button><button onclick="deleteSchedule('${s.id}')" class="text-red-500 text-lg"><i class="fas fa-trash"></i></button></div></div><div class="space-y-1.5 text-sm text-gray-700 border-t pt-3"><p><strong class="font-medium w-36 inline-block text-gray-500">Prelude:</strong> ${s.prelude||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Pembukaan:</strong> ${s.pembukaan||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Kyrie:</strong> ${s.kyrie||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Gloria:</strong> ${s.gloria||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Persembahan:</strong> ${s.persembahan||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Peng. Persembahan:</strong> ${s.pengantar_persembahan||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Kudus:</strong> ${s.sanctus||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Anak Domba Allah:</strong> ${s.agnus_dei||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Komuni:</strong> ${s.komuni||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Setelah Komuni:</strong> ${s.setelah_komuni||'-'}</p><p><strong class="font-medium w-36 inline-block text-gray-500">Penutup:</strong> ${s.penutup||'-'}</p></div><div class="mt-3 pt-3 border-t text-center"><button onclick="shareToWhatsapp('${s.id}')" class="text-green-500 font-semibold w-full text-sm"><i class="fab fa-whatsapp mr-1"></i> Bagikan</button></div></div>`; }); } } catch(err) { showToast(`Gagal memuat jadwal: ${err.message}`, 'error'); } finally { showLoader('schedule-loader', false); } }
+        
+        async function shareToWhatsapp(scheduleId) {
+            try {
+                const schedule = await callApi('getScheduleById', [scheduleId]);
+                const formattedDate = formatTanggal(schedule.date);
+                let message = `*Jadwal Lagu Misa*\nTanggal: ${formattedDate}\n\n`;
+                
+                const songFields = {
+                    'Prelude': 'prelude',
+                    'Pembukaan': 'pembukaan',
+                    'Kyrie': 'kyrie',
+                    'Gloria': 'gloria',
+                    'Persembahan': 'persembahan',
+                    'Pengantar Persembahan': 'pengantar_persembahan',
+                    'Kudus': 'sanctus',
+                    'Anak Domba Allah': 'agnus_dei',
+                    'Komuni': 'komuni',
+                    'Setelah Komuni': 'setelah_komuni',
+                    'Penutup': 'penutup'
+                };
+
+                for (const label in songFields) {
+                    const key = songFields[label];
+                    if (schedule[key]) {
+                        message += `*${label}:* ${schedule[key]}\n`;
+                    }
+                }
+
+                if (schedule.tambahan) {
+                    message += `\n*Lagu Tambahan:* ${schedule.tambahan}\n`;
+                }
+
+                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                window.open(whatsappUrl, '_blank');
+                showToast('Jadwal siap dibagikan di WhatsApp!', 'success');
+
+            } catch(err) {
+                showToast(`Gagal membuat pesan WhatsApp: ${err.message}`, 'error');
+            }
+        }
+
+        async function openScheduleDetailModal(scheduleId) { const contentDiv = document.getElementById('schedule-detail-content'); contentDiv.innerHTML = '<div class="loader"></div>'; openModal('schedule-detail-modal'); try { const details = await callApi('getScheduleDetails', [scheduleId]); document.getElementById('schedule-detail-title').innerText = `Detail Misa ${formatTanggal(details.date)}`; let html = '<div class="space-y-3">'; const songOrder = [{ key: 'prelude', label: 'Prelude' }, { key: 'pembukaan', label: 'Pembukaan' }, { key: 'kyrie', label: 'Kyrie' }, { key: 'gloria', label: 'Gloria' }, { key: 'persembahan', label: 'Persembahan' }, { key: 'pengantar_persembahan', label: 'Peng. Persembahan' }, { key: 'sanctus', label: 'Kudus' }, { key: 'agnus_dei', label: 'Anak Domba Allah' }, { key: 'komuni', label: 'Komuni' }, { key: 'setelah_komuni', label: 'Setelah Komuni' }, { key: 'penutup', label: 'Penutup' }]; songOrder.forEach(item => { const song = details[item.key]; if (song && song.title) { const ordinariumInfo = song.ordinarium ? `<span class="ml-2 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">${song.ordinarium}</span>` : ''; html += `<div><p class="font-semibold text-gray-500">${item.label}</p><p class="pl-2">${song.title}${ordinariumInfo}</p></div>`; } }); if (details.tambahan) { html += `<div><p class="font-semibold text-gray-500">Lagu Tambahan</p><p class="pl-2">${details.tambahan}</p></div>`; } html += '</div>'; contentDiv.innerHTML = html; } catch(err) { contentDiv.innerHTML = `<p class="text-red-500">Gagal memuat detail: ${err.message}</p>`; } }
+        async function syncSong(id, button) { const icon = button.querySelector('i'); icon.classList.add('fa-spin'); button.disabled = true; try { await callApi('syncSongData', [id]); showToast('Lagu berhasil disinkronkan!', 'success'); loadSongs(); } catch(err) { showToast(`Gagal sinkronisasi: ${err.message}`, 'error'); } finally { icon.classList.remove('fa-spin'); button.disabled = false; }}
+        async function syncAll() { if(!confirm("Yakin sinkronkan SEMUA lagu?")) return; const btn = document.getElementById('sync-all-btn'); btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Sinkronisasi...`; try { const result = await callApi('syncAllSongs'); showToast(result.message, 'success'); loadAllSongs(); } catch(err) { showToast(`Gagal: ${err.message}`, 'error'); } finally { btn.disabled = false; btn.innerHTML = `<i class="fas fa-sync-alt mr-2"></i>Sinkronkan Semua`; } }
+        async function handleSongFormSubmit(e) { e.preventDefault(); const btn = document.getElementById('song-form-submit-btn'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; try { const songNumber = document.getElementById('song-number').value.trim(); const existingSong = allSongsCache.find(s => s.nomor_lagu.toString() === songNumber && s.id_unik !== document.getElementById('song-id').value); if (existingSong) { showToast(`Nomor lagu ${songNumber} sudah ada.`, 'error'); return; } const file = document.getElementById('song-file').files[0]; if (file) { const fileData = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = e => resolve({ fileName: file.name, mimeType: file.type, data: e.target.result.split(',')[1] }); reader.onerror = reject; reader.readAsDataURL(file); }); const fileUrl = await callApi('uploadFileToDrive', [fileData]); document.getElementById('song-pdf-url').value = fileUrl; } await saveSongData(); } catch(err) { showToast(`Gagal menyimpan lagu: ${err.message}`, 'error'); } finally { btn.disabled = false; btn.innerText = 'Simpan'; } }
+        async function saveSongData() { const songData = { id_unik: document.getElementById('song-id').value, nomor_lagu: document.getElementById('song-number').value, nama_lagu: document.getElementById('song-name').value, jenis_lagu: document.getElementById('song-type').value, pdf_url: document.getElementById('song-pdf-url').value }; const func = songData.id_unik ? 'updateSong' : 'addSong'; await callApi(func, [songData]); showToast('Lagu berhasil disimpan!', 'success'); closeModal('song-modal'); loadAllSongs(); }
+        async function editSong(id) { try { const song = await callApi('getSongById', [id]); openSongModal(song); } catch(err) { showToast(`Gagal mengambil data lagu: ${err.message}`, 'error'); } }
+        async function deleteSong(id) { if (confirm('Yakin hapus lagu ini?')) { try { await callApi('deleteSong', [id]); showToast('Lagu berhasil dihapus!', 'success'); loadAllSongs(); } catch(err) { showToast(`Gagal menghapus lagu: ${err.message}`, 'error'); } } }
+        async function editSchedule(id) { try { const schedule = await callApi('getScheduleById', [id]); openScheduleModal(schedule, false); } catch(err) { showToast(`Gagal mengambil data jadwal: ${err.message}`, 'error'); } }
+        async function deleteSchedule(id) { if (confirm('Yakin hapus jadwal ini?')) { try { await callApi('deleteSchedule', [id]); showToast('Jadwal berhasil dihapus!', 'success'); loadSchedules(); } catch(err) { showToast(`Gagal menghapus jadwal: ${err.message}`, 'error'); } } }
+        function openSongModal(song = null) { const form = document.getElementById('song-form'); form.reset(); document.getElementById('song-modal-title').innerText = song ? 'Edit Lagu' : 'Tambah Lagu'; document.getElementById('song-form-submit-btn').disabled = false; document.getElementById('song-form-submit-btn').innerText = 'Simpan'; document.getElementById('file-upload-status').innerText = ''; document.getElementById('song-id').value = song ? song.id_unik : ''; document.getElementById('song-pdf-url').value = song ? song.pdf_url : ''; if (song) { document.getElementById('song-number').value = song.nomor_lagu; document.getElementById('song-name').value = song.nama_lagu; document.getElementById('song-type').value = song.jenis_lagu; if(song.pdf_url) document.getElementById('file-upload-status').innerHTML = `<a href="${song.pdf_url}" target="_blank" class="text-blue-500">Lihat Partitur</a>`; } openModal('song-modal'); }
+        function autoUpdateSongType(number) { const num = parseInt(number); if(isNaN(num)) return; let type = ""; if (num >= 319 && num <= 338) type = "Pembuka"; else if (num >= 339 && num <= 363) type = "Kyrie"; else if (num >= 479 && num <= 512) type = "Prapaskah"; if (type) document.getElementById('song-type').value = type; }
+        function openCsvModal(id) { openModal(id); }
+        function openModal(id) { const modal = document.getElementById(id); modal.classList.remove('hidden'); document.body.classList.add('overflow-hidden'); setTimeout(() => { modal.classList.add('opacity-100'); modal.querySelector('.modal-content').classList.add('scale-100','opacity-100'); modal.querySelector('.modal-content').classList.remove('scale-95','opacity-0'); }, 10); }
+        function closeModal(id) { const modal = document.getElementById(id); modal.classList.remove('opacity-100'); modal.querySelector('.modal-content').classList.remove('scale-100','opacity-100'); modal.querySelector('.modal-content').classList.add('scale-95','opacity-0'); setTimeout(() => { modal.classList.add('hidden'); document.body.classList.remove('overflow-hidden'); }, 300); }
+        async function exportAllDataAsCsv(type) { const func = type === 'songs' ? 'exportSongsAsCsv' : 'exportSchedulesAsCsv'; const fileName = type === 'songs' ? 'export_bank_lagu.csv' : 'template_jadwal_misa.csv'; try { const csv = await callApi(func); const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = fileName; link.click(); URL.revokeObjectURL(link.href); showToast('File berhasil dieksport!', 'success'); } catch(err) { showToast(`Gagal export: ${err.message}`, 'error'); } }
+        async function uploadCsv(type) { const isSongs = type === 'songs'; const input = document.getElementById(isSongs ? 'song-csv-file-input' : 'schedule-csv-file-input'); const file = input.files[0]; if (!file) { showToast("Pilih file.", 'error'); return; } const btn = document.getElementById(isSongs ? 'upload-song-csv-btn' : 'upload-schedule-csv-btn'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; try { const csvData = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = e => resolve(e.target.result); reader.onerror = reject; reader.readAsText(file, 'UTF-8'); }); const func = isSongs ? 'uploadCsvData' : 'uploadScheduleCsvData'; const modalId = isSongs ? 'song-csv-modal' : 'schedule-csv-modal'; const res = await callApi(func, [csvData]); showToast(`Selesai! ${res.success} baris berhasil, ${res.errors} gagal.`, res.errors > 0 ? 'error' : 'success'); closeModal(modalId); if(isSongs) loadAllSongs(); else loadSchedules(); } catch(err) { showToast(`Gagal: ${err.message}`, 'error'); } finally { btn.disabled = false; btn.innerText = 'Upload File'; input.value = ''; } }
+    </script>
+</body>
+</html>
